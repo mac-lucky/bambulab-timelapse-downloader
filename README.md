@@ -4,7 +4,7 @@ Automated tool to download and convert timelapse videos from Bambu Lab 3D printe
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/maclucky/bambulab-timelapse-downloader)](https://hub.docker.com/r/maclucky/bambulab-timelapse-downloader)
 [![Docker Image Version](https://img.shields.io/docker/v/maclucky/bambulab-timelapse-downloader/latest)](https://hub.docker.com/r/maclucky/bambulab-timelapse-downloader/tags)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mac-lucky/.github/workflows/docker-image.yml)](https://github.com/mac-lucky/bambulab-timelapse-downloader/actions)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mac-lucky/bambulab-timelapse-downloader/docker-image.yml)](https://github.com/mac-lucky/bambulab-timelapse-downloader/actions)
 
 ## Features
 
