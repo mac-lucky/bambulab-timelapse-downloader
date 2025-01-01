@@ -1,20 +1,20 @@
-name: Docker Image for Kubernetes Ping Exporter
+name: Docker Image for Bambulab Timelapse Downloader
 
 on:
   push:
     branches: ["master"]
     paths-ignore:
-      - ".github/workflows/**"
       - "*.md"
       - "LICENSE"
       - ".gitignore"
+      - ".dockerignore"
   pull_request:
     branches: ["master"]
     paths-ignore:
-      - ".github/workflows/**"
       - "*.md"
       - "LICENSE"
       - ".gitignore"
+      - ".dockerignore"
 
 jobs:
   build:
