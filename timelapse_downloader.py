@@ -40,7 +40,7 @@ def convert_avi_to_mp4(input_file, output_file):
     try:
         print(f'Converting {input_file} to {output_file}')
         video_clip = VideoFileClip(input_file)
-        video_clip.write_videofile(output_file, codec='mpeg4')
+        video_clip.write_videofile(output_file, codec='libx264', bitrate='10000k')
         video_clip.close()
         print(f'Conversion to {output_file} successful.')
         os.remove(input_file)  # Delete the .avi file after conversion
