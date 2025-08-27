@@ -16,7 +16,6 @@ on:
 
 jobs:
   build:
-    environment: maclucky
     permissions:
       contents: write
       packages: write
