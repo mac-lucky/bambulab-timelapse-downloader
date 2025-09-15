@@ -6,6 +6,7 @@ RUN apk add --no-cache \
     gcc \
     musl-dev \
     python3-dev \
+    ffmpeg \
     && python -m venv /venv \
     && /venv/bin/pip install --upgrade pip setuptools wheel
 
@@ -21,6 +22,9 @@ COPY timelapse_downloader.py .
 
 # Runtime stage - Use Alpine for better Python package compatibility
 FROM python:3.12-alpine
+
+# Install runtime dependencies (ffmpeg needed for moviepy)
+RUN apk add --no-cache ffmpeg
 
 # Set working directory
 WORKDIR /app
