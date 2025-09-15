@@ -1,14 +1,34 @@
-# Use an official Python runtime as a parent image
-FROM python:3.12-slim
+# Build stage - Use Alpine for smaller size and faster builds
+FROM python:3.12-alpine AS builder
 
-# Set the working directory in the container
+# Install build dependencies
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    python3-dev \
+    && python -m venv /venv \
+    && /venv/bin/pip install --upgrade pip setuptools wheel
+
+# Set working directory
 WORKDIR /app
 
-# Copy the required files into the container
-COPY timelapse_downloader.py requirements.txt ./
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy application code
+COPY timelapse_downloader.py .
+
+# Runtime stage - Use distroless Python image for maximum security
+FROM gcr.io/distroless/python3-debian12
+
+# Copy virtual environment and application
+COPY --from=builder /venv /venv
+COPY --from=builder /app/timelapse_downloader.py /app/
+
+# Set working directory and environment
+WORKDIR /app
+ENV PATH="/venv/bin:$PATH"
 
 # Set default environment variables (can be overridden at runtime)
 ENV FTP_HOST=192.168.1.1 \
@@ -20,5 +40,5 @@ ENV FTP_HOST=192.168.1.1 \
     DELETE_FILES=false \
     CRON_SCHEDULE='*/5 * * * *'
 
-# Command to run the script
-CMD ["python", "-u", "timelapse_downloader.py"]
+# Run application
+ENTRYPOINT ["/venv/bin/python", "-u", "timelapse_downloader.py"]
