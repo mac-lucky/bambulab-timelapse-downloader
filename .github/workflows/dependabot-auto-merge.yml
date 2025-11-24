@@ -2,7 +2,7 @@
 name: Shared Dependabot Auto-Merge - Bambulab Timelapse Downloader
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
