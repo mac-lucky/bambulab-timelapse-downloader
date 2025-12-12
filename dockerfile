@@ -1,27 +1,29 @@
-# Build stage - Use Alpine for smaller size and faster builds
-FROM python:3.14-alpine AS builder
+# Build stage - Use Alpine with uv for fast dependency installation
+FROM python:3.12-alpine AS builder
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Install build dependencies
 RUN apk add --no-cache \
     gcc \
     musl-dev \
     python3-dev \
-    ffmpeg \
-    && python -m venv /venv \
-    && /venv/bin/pip install --upgrade pip setuptools wheel
+    ffmpeg
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Copy project files
+COPY pyproject.toml .
 COPY timelapse_downloader.py .
 
-# Runtime stage - Use Alpine for better Python package compatibility
-FROM python:3.14-alpine
+# Create virtual environment and install dependencies
+RUN uv venv /venv && \
+    uv pip install --python /venv/bin/python -r pyproject.toml
+
+# Runtime stage - Use Alpine for smaller image
+FROM python:3.12-alpine
 
 # Install runtime dependencies (ffmpeg needed for moviepy)
 RUN apk add --no-cache ffmpeg
