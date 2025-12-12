@@ -1,2 +1,0 @@
-moviepy==2.2.1
-croniter==6.0.0

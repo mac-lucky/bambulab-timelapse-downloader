@@ -6,18 +6,13 @@ RUN apk add --no-cache \
     gcc \
     musl-dev \
     python3-dev \
-    ffmpeg \
-    && python -m venv /venv \
-    && /venv/bin/pip install --upgrade pip setuptools wheel
+    ffmpeg
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Copy project files
+COPY pyproject.toml .
 COPY timelapse_downloader.py .
 
 # Create virtual environment and install dependencies
