@@ -72,9 +72,14 @@ docker run -d \
 
 ### Running Locally
 
-1. Install dependencies:
+1. Install dependencies using uv:
 ```bash
-pip install -r requirements.txt
+uv pip install -r pyproject.toml
+```
+
+Or using pip:
+```bash
+pip install moviepy croniter
 ```
 
 2. Run the script:
@@ -84,9 +89,9 @@ python timelapse_downloader.py
 
 ## Requirements
 
-- Python 3.x
-- moviepy
-- croniter
+- Python 3.12+
+- moviepy>=2.2.1
+- croniter>=6.0.0
 
 ## How It Works
 
