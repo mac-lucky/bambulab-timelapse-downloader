@@ -35,6 +35,14 @@ class ImplicitFTP_TLS(ftplib.FTP_TLS):
             value = self.context.wrap_socket(value)
         self._sock = value
 
+    def ntransfercmd(self, cmd, rest=None):
+        """Override to reuse the TLS session for data connections (required by some printers like P2S)."""
+        conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        if self._prot_p:
+            conn = self.context.wrap_socket(conn, server_hostname=self.host,
+                                            session=self.sock.session)
+        return conn, size
+
 def convert_avi_to_mp4(input_file, output_file):
     """Convert .avi to .mp4 using moviepy."""
     try:
