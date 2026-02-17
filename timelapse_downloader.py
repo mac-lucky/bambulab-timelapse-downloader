@@ -86,9 +86,11 @@ def ftp_download():
         if REMOTE_FOLDER in ftp_client.nlst():
             ftp_client.cwd(REMOTE_FOLDER)
             try:
-                print("Looking avi files for download.")
+                print("Looking for timelapse files to download.")
                 ftp_timelapse_files = [
-                    f for f in ftp_client.nlst() if f.endswith(".avi")
+                    f
+                    for f in ftp_client.nlst()
+                    if f.endswith(".avi") or f.endswith(".mp4")
                 ]
                 ftp_timelapse_files = [
                     f for f in ftp_timelapse_files if f not in downloaded_files
@@ -100,26 +102,27 @@ def ftp_download():
                     for idx, f in enumerate(
                         ftp_timelapse_files, start=1
                     ):  # Track index using enumerate
-                        mp4_file_name = f.replace(".avi", ".mp4")
-                        if mp4_file_name in downloaded_files:
-                            if DELETE_FILES == "true":
-                                try:
-                                    ftp_client.delete(f)
-                                except Exception:
+                        # For .avi files, skip if already converted to .mp4
+                        if f.endswith(".avi"):
+                            mp4_file_name = f.replace(".avi", ".mp4")
+                            if mp4_file_name in downloaded_files:
+                                if DELETE_FILES == "true":
+                                    try:
+                                        ftp_client.delete(f)
+                                    except Exception:
+                                        print(
+                                            f"Failed to delete file {f} after download, continuing to next file."
+                                        )
+                                        continue
+                                else:
                                     print(
-                                        f"Failed to delete file {f} after download, continuing to next file."
+                                        f"Skipping {f} as {mp4_file_name} already exists."
                                     )
                                     continue
-                            else:
-                                print(
-                                    f"Skipping {f} as {mp4_file_name} already exists."
-                                )
-                                continue
 
                         filesize = ftp_client.size(f)
                         filesize_mb = round(filesize / 1024 / 1024, 2)
-                        download_file_name = f
-                        download_file_path = f"{DOWNLOAD_FOLDER}/{download_file_name}"
+                        download_file_path = f"{DOWNLOAD_FOLDER}/{f}"
                         if filesize == 0:
                             print(
                                 f"Filesize of file {f} is 0, skipping file and continue"
@@ -132,9 +135,12 @@ def ftp_download():
                             with open(download_file_path, "wb") as fhandle:
                                 ftp_client.retrbinary("RETR %s" % f, fhandle.write)
 
-                            # Convert to mp4 after downloading
-                            mp4_file_path = download_file_path.replace(".avi", ".mp4")
-                            convert_avi_to_mp4(download_file_path, mp4_file_path)
+                            # Convert .avi to .mp4, download .mp4 as-is
+                            if f.endswith(".avi"):
+                                mp4_file_path = download_file_path.replace(
+                                    ".avi", ".mp4"
+                                )
+                                convert_avi_to_mp4(download_file_path, mp4_file_path)
 
                             if DELETE_FILES == "true":
                                 try:
