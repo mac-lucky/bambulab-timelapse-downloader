@@ -15,6 +15,27 @@ Automated tool to download and convert timelapse videos from Bambu Lab 3D printe
 - Optional automatic deletion of source files after download
 - Docker support for easy deployment
 
+## Prerequisites
+
+Before this tool can connect to your printer, you need to enable LAN access on the printer itself. The menu path **differs per model**:
+
+| Model | Path on printer touchscreen |
+|---|---|
+| X1 / X1C / X1E / H2 / P2S | Settings → **LAN Only** → enable **LAN Only Mode** (and **Developer Mode** if shown) |
+| P1P / P1S | Settings → **WLAN** → **LAN Only Mode** |
+| A1 / A1 mini | Settings → scroll to page 3 → **LAN Only Mode** |
+
+Then:
+
+1. Note the **Access Code** (8-digit code) shown on the same settings page — this is your `FTP_PASS`.
+2. The FTP user is always `bblp` and the port is `990` (FTPS / implicit TLS).
+3. On current firmware you may also need to enable **Developer Mode** to expose FTPS to third-party clients.
+4. Make sure port `990` isn't blocked by a firewall/VLAN between the container and the printer.
+
+> Note: **LAN Only Mode** severs the Bambu Cloud connection (no Handy app / remote printing). **LAN Mode Liveview** is a separate sub-toggle for the camera stream, not required for FTP.
+
+References: [Enable LAN Mode](https://wiki.bambulab.com/en/knowledge-sharing/enable-lan-mode) · [Enable Developer Mode](https://wiki.bambulab.com/en/knowledge-sharing/enable-developer-mode)
+
 ## Setup
 
 ### Environment Variables
