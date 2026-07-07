@@ -1,3 +1,5 @@
+<img src="icon.svg" width="96" align="right" alt="">
+
 # bambulab-timelapse-downloader
 
 Automated tool to download and convert timelapse videos from Bambu Lab 3D printers.
