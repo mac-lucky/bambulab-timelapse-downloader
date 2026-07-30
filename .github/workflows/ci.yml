@@ -16,25 +16,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # The shared workflow only runs container and kubernetes smoke tests, so the
-  # unit tests are driven from here.
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # Exact version: setup-uv stopped publishing floating major tags after v7.
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          version: "latest"
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Run tests
-        run: uv run pytest -q
-
   ci-cd:
     name: Python CI/CD Pipeline
     uses: mac-lucky/actions-shared-workflows/.github/workflows/python-cicd-reusable.yml@master
@@ -59,6 +40,7 @@ jobs:
       use_uv: true
 
       # Test configuration
+      enable_unit_tests: true
       enable_container_tests: true
       enable_kubernetes_tests: false
 
