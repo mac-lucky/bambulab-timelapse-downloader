@@ -48,7 +48,7 @@ References: [Enable LAN Mode](https://wiki.bambulab.com/en/knowledge-sharing/ena
 - `FTP_PASS`: FTP password (default: 12345678)
 - `REMOTE_FOLDER`: Remote folder path (default: timelapse)
 - `LOCAL_FOLDER`: Local download directory (default: /timelapse)
-- `DELETE_FILES`: Whether to delete source files after download (default: false)
+- `DELETE_FILES`: Whether to delete source files from the printer after download (default: false). Accepts `true`, `1`, `yes` or `on`, case-insensitive; anything else means false.
 - `CRON_SCHEDULE`: Schedule for running downloads (default: */5 * * * *)
 
 ## Usage

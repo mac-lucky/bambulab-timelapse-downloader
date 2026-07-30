@@ -1,6 +1,7 @@
 import ftplib  # nosec B402 - FTP over implicit TLS (FTPS) is required by Bambu Lab printers
 import ssl
 import os
+import posixpath
 import time
 from moviepy import VideoFileClip
 from croniter import croniter
@@ -12,11 +13,16 @@ FTP_PORT = int(os.getenv("FTP_PORT", 990))
 FTP_USER = os.getenv("FTP_USER", "bblp")
 FTP_PASS = os.getenv("FTP_PASS", "12345678")
 REMOTE_FOLDER = os.getenv("REMOTE_FOLDER", "timelapse")
-DOWNLOAD_FOLDER = os.getenv(
-    "LOCAL_FOLDER", "/Users/maclucky/Downloads/scripts/timelapse"
+DOWNLOAD_FOLDER = os.getenv("LOCAL_FOLDER", "/timelapse")
+DELETE_FILES = os.getenv("DELETE_FILES", "false").strip().lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
 )
-DELETE_FILES = os.getenv("DELETE_FILES", "false")
 CRON_SCHEDULE = os.getenv("CRON_SCHEDULE", "*/5 * * * *")  # Default: every 5 minutes
+
+VIDEO_SUFFIXES = (".avi", ".mp4")
 
 
 class ImplicitFTP_TLS(ftplib.FTP_TLS):
@@ -48,138 +54,188 @@ class ImplicitFTP_TLS(ftplib.FTP_TLS):
         return conn, size
 
 
+def mp4_name(name):
+    """Return the .mp4 name a given .avi converts to."""
+    return name[: -len(".avi")] + ".mp4"
+
+
+def remove_quietly(path):
+    """Delete a file, ignoring the case where it is not there."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def convert_avi_to_mp4(input_file, output_file):
-    """Convert .avi to .mp4 using moviepy."""
+    """Convert .avi to .mp4 using moviepy. Returns True on success."""
     try:
         print(f"Converting {input_file} to {output_file}")
-        video_clip = VideoFileClip(input_file)
-        video_clip.write_videofile(output_file, codec="libx264", bitrate="10000k")
-        video_clip.close()
+        # The context manager closes the ffmpeg reader subprocess even if the write fails.
+        with VideoFileClip(input_file) as video_clip:
+            video_clip.write_videofile(output_file, codec="libx264", bitrate="10000k")
         print(f"Conversion to {output_file} successful.")
-        os.remove(input_file)  # Delete the .avi file after conversion
+        os.remove(input_file)
         print(f"Removed original file {input_file}.")
+        return True
     except Exception as e:
         print(f"Failed to convert {input_file} to {output_file}: {e}")
+        # A partial .mp4 would look like a finished conversion on the next run.
+        remove_quietly(output_file)
+        return False
+
+
+def safe_local_name(remote_name):
+    """Map a remote listing entry to a basename safe to join onto DOWNLOAD_FOLDER.
+
+    Returns None for entries we refuse to touch. Rejecting CRLF also keeps the
+    entry out of the FTP command stream, where it would mean command injection.
+    """
+    if "\r" in remote_name or "\n" in remote_name or "\x00" in remote_name:
+        return None
+    # posixpath, not os.path: FTP pathnames are always "/"-separated (RFC 959),
+    # whatever the OS this happens to run on.
+    name = posixpath.basename(remote_name.rstrip("/"))
+    if not name or name in (".", ".."):
+        return None
+    return name
+
+
+def list_remote_files(ftp_client, downloaded_files):
+    """Return (remote entry, local name) pairs for timelapses we do not have yet."""
+    pending = []
+    for entry in ftp_client.nlst():
+        if not entry.endswith(VIDEO_SUFFIXES):
+            continue
+        local_name = safe_local_name(entry)
+        if local_name is None:
+            print(f"Skipping remote entry with unusable name: {entry!r}")
+            continue
+        if local_name not in downloaded_files:
+            pending.append((entry, local_name))
+    return pending
+
+
+def delete_remote(ftp_client, remote):
+    """Delete a file on the printer, reporting failure rather than raising."""
+    try:
+        ftp_client.delete(remote)
+        return True
+    except Exception as e:
+        print(f"Failed to delete file {remote}: {e}, continuing to next file.")
+        return False
+
+
+def download_one(ftp_client, remote, local_name, label):
+    """Download a single timelapse, converting .avi to .mp4, then delete the remote copy."""
+    download_file_path = os.path.join(DOWNLOAD_FOLDER, local_name)
+    # Transfer into a scratch name and rename on completion. A half-written file
+    # under the real name would be indistinguishable from a finished download on
+    # the next run, so the video would be skipped forever.
+    partial_path = download_file_path + ".part"
+    try:
+        filesize = ftp_client.size(remote)
+        if not filesize:
+            print(
+                f"Filesize of file {remote} is {filesize}, skipping file and continue"
+            )
+            return
+        filesize_mb = round(filesize / 1024 / 1024, 2)
+
+        print(f'Downloading file "{remote}" ({label}), size: {filesize_mb} MB')
+        with open(partial_path, "wb") as fhandle:
+            ftp_client.retrbinary("RETR %s" % remote, fhandle.write)
+        os.replace(partial_path, download_file_path)
+
+        # Convert .avi to .mp4, download .mp4 as-is
+        if local_name.endswith(".avi"):
+            mp4_file_path = os.path.join(DOWNLOAD_FOLDER, mp4_name(local_name))
+            if not convert_avi_to_mp4(download_file_path, mp4_file_path):
+                # Keep the printer's copy so a later run can retry the conversion.
+                return
+    except Exception as e:
+        remove_quietly(partial_path)
+        remove_quietly(download_file_path)
+        print(f"Failed to download file {remote}: {e}, continuing with next file.")
+        return
+
+    if DELETE_FILES:
+        delete_remote(ftp_client, remote)
 
 
 def ftp_download():
     try:
-        if not os.path.exists(DOWNLOAD_FOLDER):
-            os.makedirs(DOWNLOAD_FOLDER)
-
-        downloaded_files = [
-            f
-            for f in os.listdir(DOWNLOAD_FOLDER)
-            if f.endswith(".avi") or f.endswith(".mp4")
-        ]
+        os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+        downloaded_files = {
+            f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith(VIDEO_SUFFIXES)
+        }
 
         print(f"Connecting to printer {FTP_USER}@{FTP_HOST}:{FTP_PORT}")
         ftp_client = ImplicitFTP_TLS()
-        ftp_client.connect(host=FTP_HOST, port=990)
+        ftp_client.connect(host=FTP_HOST, port=FTP_PORT)
         ftp_client.login(user=FTP_USER, passwd=FTP_PASS)
         ftp_client.prot_p()
         print("Connected.")
     except Exception as e:
         print(f'FTP connection failed, error: "{e}"')
+        return
 
     try:
-        if REMOTE_FOLDER in ftp_client.nlst():
+        # FTP.__exit__ quits the session and closes the socket; without it the
+        # daemon leaks one FTPS connection per scheduled run.
+        with ftp_client:
+            if REMOTE_FOLDER not in ftp_client.nlst():
+                print(f"{REMOTE_FOLDER} not found on FTP server.")
+                return
             ftp_client.cwd(REMOTE_FOLDER)
+
+            print("Looking for timelapse files to download.")
             try:
-                print("Looking for timelapse files to download.")
-                ftp_timelapse_files = [
-                    f
-                    for f in ftp_client.nlst()
-                    if f.endswith(".avi") or f.endswith(".mp4")
-                ]
-                ftp_timelapse_files = [
-                    f for f in ftp_timelapse_files if f not in downloaded_files
-                ]
-
-                total_files = len(ftp_timelapse_files)
-                if total_files:
-                    print(f"Found {total_files} files for download.")
-                    for idx, f in enumerate(
-                        ftp_timelapse_files, start=1
-                    ):  # Track index using enumerate
-                        # For .avi files, skip if already converted to .mp4
-                        if f.endswith(".avi"):
-                            mp4_file_name = f.replace(".avi", ".mp4")
-                            if mp4_file_name in downloaded_files:
-                                if DELETE_FILES == "true":
-                                    try:
-                                        ftp_client.delete(f)
-                                    except Exception:
-                                        print(
-                                            f"Failed to delete file {f} after download, continuing to next file."
-                                        )
-                                        continue
-                                else:
-                                    print(
-                                        f"Skipping {f} as {mp4_file_name} already exists."
-                                    )
-                                    continue
-
-                        filesize = ftp_client.size(f)
-                        filesize_mb = round(filesize / 1024 / 1024, 2)
-                        download_file_path = f"{DOWNLOAD_FOLDER}/{f}"
-                        if filesize == 0:
-                            print(
-                                f"Filesize of file {f} is 0, skipping file and continue"
-                            )
-                            continue
-                        try:
-                            print(
-                                f'Downloading file "{f}" ({idx} out of {total_files}), size: {filesize_mb} MB'
-                            )
-                            with open(download_file_path, "wb") as fhandle:
-                                ftp_client.retrbinary("RETR %s" % f, fhandle.write)
-
-                            # Convert .avi to .mp4, download .mp4 as-is
-                            if f.endswith(".avi"):
-                                mp4_file_path = download_file_path.replace(
-                                    ".avi", ".mp4"
-                                )
-                                convert_avi_to_mp4(download_file_path, mp4_file_path)
-
-                            if DELETE_FILES == "true":
-                                try:
-                                    ftp_client.delete(f)
-                                except Exception:
-                                    print(
-                                        f"Failed to delete file {f} after download, continuing to next file."
-                                    )
-                                    continue
-                        except Exception as e:
-                            if os.path.exists(download_file_path):
-                                os.remove(download_file_path)
-                            print(
-                                f"Failed to download file {f}: {e}, continuing with next file."
-                            )
-                            continue
+                pending = list_remote_files(ftp_client, downloaded_files)
             except ftplib.error_perm as resp:
-                if str(resp) == "550 No files found":
-                    print("No files in this directory.")
-                else:
-                    raise
-        else:
-            print(f"{REMOTE_FOLDER} not found on FTP server.")
+                if str(resp).startswith("550"):
+                    print(f"No files in this directory ({resp}).")
+                    return
+                raise
+
+            if not pending:
+                return
+            print(f"Found {len(pending)} files for download.")
+            for idx, (remote, local_name) in enumerate(pending, start=1):
+                converted = local_name.endswith(".avi") and (
+                    mp4_name(local_name) in downloaded_files
+                )
+                if converted:
+                    if DELETE_FILES and delete_remote(ftp_client, remote):
+                        print(f"Deleted remote {remote}, already converted locally.")
+                    elif not DELETE_FILES:
+                        print(f"Skipping {remote}, already converted locally.")
+                    continue
+
+                download_one(
+                    ftp_client, remote, local_name, f"{idx} out of {len(pending)}"
+                )
     except Exception as e:
         print(f"Program failed: {e}")
 
 
 def get_next_run():
     """Calculate the next run time based on cron schedule."""
-    iter = croniter(CRON_SCHEDULE, datetime.now())
-    return iter.get_next(datetime)
+    cron_iter = croniter(CRON_SCHEDULE, datetime.now())
+    return cron_iter.get_next(datetime)
 
 
-# Main loop with cron scheduling
-while True:
-    ftp_download()
-    next_run = get_next_run()
-    now = datetime.now()
-    wait_seconds = (next_run - now).total_seconds()
-    print(f"Next run scheduled at {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Waiting for {int(wait_seconds)} seconds...")
-    time.sleep(wait_seconds)
+def main():
+    """Run the download on the configured cron schedule, forever."""
+    while True:
+        ftp_download()
+        next_run = get_next_run()
+        now = datetime.now()
+        wait_seconds = (next_run - now).total_seconds()
+        print(f"Next run scheduled at {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Waiting for {int(wait_seconds)} seconds...")
+        time.sleep(max(0, wait_seconds))
+
+
+if __name__ == "__main__":
+    main()
