@@ -1,15 +1,16 @@
-import ftplib  # nosec B402 - FTP over implicit TLS (FTPS) is required by Bambu Lab printers
-import ssl
+# FTP over implicit TLS (FTPS) is required by Bambu Lab printers.
+import ftplib  # nosec B402
 import os
 import posixpath
+import ssl
 import time
-from moviepy import VideoFileClip
-from croniter import croniter
 from datetime import datetime
 
+from croniter import croniter
+from moviepy import VideoFileClip
 
 FTP_HOST = os.getenv("FTP_HOST", "192.168.1.1")
-FTP_PORT = int(os.getenv("FTP_PORT", 990))
+FTP_PORT = int(os.getenv("FTP_PORT", "990"))
 FTP_USER = os.getenv("FTP_USER", "bblp")
 FTP_PASS = os.getenv("FTP_PASS", "12345678")
 REMOTE_FOLDER = os.getenv("REMOTE_FOLDER", "timelapse")
@@ -144,7 +145,7 @@ def download_one(ftp_client, remote, local_name, label):
 
         print(f'Downloading file "{remote}" ({label}), size: {filesize_mb} MB')
         with open(partial_path, "wb") as fhandle:
-            ftp_client.retrbinary("RETR %s" % remote, fhandle.write)
+            ftp_client.retrbinary(f"RETR {remote}", fhandle.write)
         os.replace(partial_path, download_file_path)
 
         # Convert .avi to .mp4, download .mp4 as-is
@@ -219,9 +220,14 @@ def ftp_download():
         print(f"Program failed: {e}")
 
 
+def now_local():
+    """Current time, aware, in the container's own timezone (TZ env var)."""
+    return datetime.now().astimezone()
+
+
 def get_next_run():
     """Calculate the next run time based on cron schedule."""
-    cron_iter = croniter(CRON_SCHEDULE, datetime.now())
+    cron_iter = croniter(CRON_SCHEDULE, now_local())
     return cron_iter.get_next(datetime)
 
 
@@ -230,7 +236,7 @@ def main():
     while True:
         ftp_download()
         next_run = get_next_run()
-        now = datetime.now()
+        now = now_local()
         wait_seconds = (next_run - now).total_seconds()
         print(f"Next run scheduled at {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Waiting for {int(wait_seconds)} seconds...")

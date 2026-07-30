@@ -10,6 +10,14 @@ dependencies = [
     "croniter>=6.2.2",
 ]
 
+[tool.ruff.lint]
+# BLE001 (blind `except Exception`) is deliberate here. This is a long-running
+# daemon and each of those handlers is a resilience boundary: a single bad file,
+# a failed conversion or a flaky printer has to be logged and stepped over, not
+# allowed to end the run or stop the container. Narrowing them would let an
+# unexpected error abort the whole batch.
+ignore = ["BLE001"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
