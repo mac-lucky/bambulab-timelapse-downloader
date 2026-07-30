@@ -1,5 +1,10 @@
 .DS_Store
 .ruff_cache
 __pycache__/
-*.py[cod]
+*.py[codz]
 .pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
