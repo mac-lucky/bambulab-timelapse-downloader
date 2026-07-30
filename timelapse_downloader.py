@@ -1,3 +1,5 @@
+import contextlib
+
 # FTP over implicit TLS (FTPS) is required by Bambu Lab printers.
 import ftplib  # nosec B402
 import os
@@ -62,10 +64,8 @@ def mp4_name(name):
 
 def remove_quietly(path):
     """Delete a file, ignoring the case where it is not there."""
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def convert_avi_to_mp4(input_file, output_file):

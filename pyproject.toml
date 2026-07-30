@@ -10,7 +10,26 @@ dependencies = [
     "croniter>=6.2.2",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    # Pinned to what CI lints with, so local ruff cannot disagree with a gate
+    # that now fails the build rather than just annotating it.
+    "ruff==0.16.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The module lives at the repo root rather than under src/, so tests need the
+# root on sys.path to import it.
+pythonpath = ["."]
+
 [tool.ruff.lint]
+# Pinned explicitly rather than inheriting ruff's defaults: that default set has
+# already widened once (0.16 went well past E4/E7/E9/F), and CI installs ruff at
+# "latest" against a gate that now blocks, so an upstream change would turn into
+# a surprise red build.
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "DTZ", "PL"]
 # BLE001 (blind `except Exception`) is deliberate here. This is a long-running
 # daemon and each of those handlers is a resilience boundary: a single bad file,
 # a failed conversion or a flaky printer has to be logged and stepped over, not
