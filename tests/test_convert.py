@@ -55,53 +55,54 @@ def tiny_avi(tmp_path):
     return path
 
 
-class RecordingClip:
-    """Stub clip whose write fails, recording whether it was closed anyway.
+@pytest.fixture
+def failing_clips(monkeypatch):
+    """Replace VideoFileClip with a stub whose write fails; yields the instances.
 
-    Used instead of a real video because the leak this guards against is our
-    own: the clip must be released even when write_videofile raises. A corrupt
-    input cannot exercise it, since that fails before a reader is ever opened.
+    A real video cannot exercise this: the leak guarded against is our own
+    failure to release the clip when write_videofile raises, and a corrupt input
+    fails during construction, before any reader exists.
     """
+    created = []
 
-    instances = []
+    class FailingClip:
+        def __init__(self, path):
+            self.path = path
+            self.closed = False
+            created.append(self)
 
-    def __init__(self, path):
-        self.path = path
-        self.closed = False
-        RecordingClip.instances.append(self)
+        def __enter__(self):
+            return self
 
-    def __enter__(self):
-        return self
+        def __exit__(self, *args):
+            self.close()
+            return False
 
-    def __exit__(self, *args):
-        self.close()
-        return False
+        def close(self):
+            self.closed = True
 
-    def close(self):
-        self.closed = True
+        def write_videofile(self, *args, **kwargs):
+            raise RuntimeError("encoder exploded")
 
-    def write_videofile(self, *args, **kwargs):
-        raise RuntimeError("encoder exploded")
+    monkeypatch.setattr(tld, "VideoFileClip", FailingClip)
+    return created
 
 
-def test_clip_is_released_even_when_the_write_fails(tmp_path, monkeypatch):
+def test_clip_is_released_even_when_the_write_fails(tmp_path, failing_clips):
     # Was: close() sat after write_videofile, so a failing write leaked the
     # ffmpeg reader subprocess and its pipes for the life of the container.
-    RecordingClip.instances = []
-    monkeypatch.setattr(tld, "VideoFileClip", RecordingClip)
     src = tmp_path / "clip.avi"
     src.write_bytes(b"pretend video")
 
     assert tld.convert_avi_to_mp4(str(src), str(tmp_path / "clip.mp4")) is False
 
-    assert len(RecordingClip.instances) == 1
-    assert RecordingClip.instances[0].closed, "clip was not closed after a failed write"
+    assert len(failing_clips) == 1
+    assert failing_clips[0].closed, "clip was not closed after a failed write"
 
 
-def test_failed_conversion_removes_a_leftover_output(tmp_path, monkeypatch):
+def test_failed_conversion_removes_a_leftover_output(tmp_path, failing_clips):
     # A half-written .mp4 would look like a finished conversion next run, and
     # get the printer's copy deleted.
-    monkeypatch.setattr(tld, "VideoFileClip", RecordingClip)
     src = tmp_path / "clip.avi"
     src.write_bytes(b"pretend video")
     out = tmp_path / "clip.mp4"

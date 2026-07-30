@@ -128,7 +128,7 @@ def test_the_connection_is_closed_even_when_the_listing_fails(run_download):
 def test_missing_remote_folder_is_reported_without_downloading(
     run_download, local_names
 ):
-    fake = FakeFTP({"a.mp4": b"x"}, remote_folder="timelapse")
+    fake = FakeFTP({"a.mp4": b"x"})
     fake.root_listing = ["some-other-folder"]
     run_download(fake)
 
