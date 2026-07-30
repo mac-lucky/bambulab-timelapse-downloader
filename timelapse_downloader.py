@@ -245,3 +245,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+import base64  # deliberate unused import to prove the lint gate blocks the build
