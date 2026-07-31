@@ -1,5 +1,7 @@
-# Build stage - Use official uv image for fast dependency installation
-FROM ghcr.io/astral-sh/uv:python3.12-alpine AS builder
+# Build stage - Use official uv image for fast dependency installation.
+# Pinned to an exact uv release: the floating python3.12-alpine tag moves
+# underneath the resolver and would change what gets installed between builds.
+FROM ghcr.io/astral-sh/uv:0.11.29-python3.12-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -19,8 +21,8 @@ COPY timelapse_downloader.py .
 RUN uv venv /venv && \
     uv pip install --python /venv/bin/python -r pyproject.toml
 
-# Runtime stage - Use official uv image for smaller size
-FROM ghcr.io/astral-sh/uv:python3.12-alpine
+# Runtime stage - same pinned image as the builder, for a matching Python build
+FROM ghcr.io/astral-sh/uv:0.11.29-python3.12-alpine
 
 # Install runtime dependencies (ffmpeg needed for moviepy)
 RUN apk add --no-cache ffmpeg
