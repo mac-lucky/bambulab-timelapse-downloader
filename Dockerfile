@@ -13,13 +13,19 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml .
+# Copy project files. uv.lock, not just pyproject.toml: installing from the
+# loose ranges in pyproject resolves whatever is newest at build time, so the
+# image would not contain the versions CI tested against with --locked.
+COPY pyproject.toml uv.lock .
 COPY timelapse_downloader.py .
 
-# Create virtual environment and install dependencies
-RUN uv venv /venv && \
-    uv pip install --python /venv/bin/python -r pyproject.toml
+ENV UV_PROJECT_ENVIRONMENT=/venv \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
+# --no-install-project skips building the script's own wheel, which is what
+# makes it safe to copy only the files above.
+RUN uv sync --locked --no-dev --no-install-project
 
 # Runtime stage - same pinned image as the builder, for a matching Python build
 FROM ghcr.io/astral-sh/uv:0.11.29-python3.12-alpine@sha256:188f4c7ad1dfad21258b81c57ce7691e5a48ffe3e07cc822bdc58262fae5c9d3
