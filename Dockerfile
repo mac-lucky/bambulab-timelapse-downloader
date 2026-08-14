@@ -1,7 +1,7 @@
 # Build stage - Use official uv image for fast dependency installation.
 # Pinned to an exact uv release: the floating python3.12-alpine tag moves
 # underneath the resolver and would change what gets installed between builds.
-FROM ghcr.io/astral-sh/uv:0.12.4-python3.12-alpine@sha256:5b85af72d97252862011b9a388c13dde930cfd47b6cb97b578b6accc6c671eb2 AS builder
+FROM ghcr.io/astral-sh/uv:0.12.5-python3.12-alpine@sha256:138f90e67682b923c4bbcc91d2bae98434e8ba8b32b555e390b055b504f69f91 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -28,7 +28,7 @@ ENV UV_PROJECT_ENVIRONMENT=/venv \
 RUN uv sync --locked --no-dev --no-install-project
 
 # Runtime stage - same pinned image as the builder, for a matching Python build
-FROM ghcr.io/astral-sh/uv:0.12.4-python3.12-alpine@sha256:5b85af72d97252862011b9a388c13dde930cfd47b6cb97b578b6accc6c671eb2
+FROM ghcr.io/astral-sh/uv:0.12.5-python3.12-alpine@sha256:138f90e67682b923c4bbcc91d2bae98434e8ba8b32b555e390b055b504f69f91
 
 # Install runtime dependencies (ffmpeg needed for moviepy)
 RUN apk add --no-cache ffmpeg
