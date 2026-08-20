@@ -15,7 +15,7 @@ dev = [
     "pytest>=8",
     # Pinned to what CI lints with, so local ruff cannot disagree with a gate
     # that now fails the build rather than just annotating it.
-    "ruff==0.16.3",
+    "ruff==0.16.4",
 ]
 
 [tool.pytest.ini_options]
