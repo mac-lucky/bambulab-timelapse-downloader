@@ -30,8 +30,10 @@ RUN uv sync --locked --no-dev --no-install-project
 # Runtime stage - same pinned image as the builder, for a matching Python build
 FROM ghcr.io/astral-sh/uv:0.12.7-python3.12-alpine@sha256:e2156509b8592cb4a74d73ba068fd45c95ec571333effc819f3ac25101147fb1
 
-# Install runtime dependencies (ffmpeg needed for moviepy)
-RUN apk add --no-cache ffmpeg
+# apk upgrade first: the digest-pinned base can lag Alpine package fixes, and
+# upgrading at build picks them up without waiting for a base-image rebuild.
+# ffmpeg is needed for moviepy.
+RUN apk upgrade --no-cache && apk add --no-cache ffmpeg
 
 # Set working directory
 WORKDIR /app
