@@ -1,7 +1,7 @@
 # Build stage - Use official uv image for fast dependency installation.
 # Pinned to an exact uv release: the floating python3.12-alpine tag moves
 # underneath the resolver and would change what gets installed between builds.
-FROM ghcr.io/astral-sh/uv:0.12.14-python3.12-alpine@sha256:59aca007bad5141d7a04593aa5e12a86ee5caaa64df5019be4b051ea284bdeeb AS builder
+FROM ghcr.io/astral-sh/uv:0.12.15-python3.12-alpine@sha256:9b8d45ef76d860cfd9b17f1a860186912de769afb53471ab3e0f5f80ec603540 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -28,7 +28,7 @@ ENV UV_PROJECT_ENVIRONMENT=/venv \
 RUN uv sync --locked --no-dev --no-install-project
 
 # Runtime stage - same pinned image as the builder, for a matching Python build
-FROM ghcr.io/astral-sh/uv:0.12.14-python3.12-alpine@sha256:59aca007bad5141d7a04593aa5e12a86ee5caaa64df5019be4b051ea284bdeeb
+FROM ghcr.io/astral-sh/uv:0.12.15-python3.12-alpine@sha256:9b8d45ef76d860cfd9b17f1a860186912de769afb53471ab3e0f5f80ec603540
 
 # apk upgrade first: the digest-pinned base can lag Alpine package fixes, and
 # upgrading at build picks them up without waiting for a base-image rebuild.
