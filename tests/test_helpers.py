@@ -87,3 +87,20 @@ def test_get_next_run_keeps_tzinfo_and_stays_in_the_cron_window(monkeypatch):
     assert nxt.tzinfo is not None
     assert nxt.utcoffset() == now.utcoffset()
     assert 0 < (nxt - now).total_seconds() <= FIVE_MINUTES
+
+
+def test_env_secret_prefers_the_file(tmp_path, monkeypatch):
+    secret = tmp_path / "ftp_pass"
+    secret.write_text("from-file\n")
+    monkeypatch.setenv("FTP_PASS", "from-env")
+    monkeypatch.setenv("FTP_PASS_FILE", str(secret))
+    assert tld.env_secret("FTP_PASS", "default") == "from-file"
+
+
+def test_env_secret_falls_back_to_env_then_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("FTP_PASS_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("FTP_PASS", "from-env")
+    assert tld.env_secret("FTP_PASS", "default") == "from-env"
+    monkeypatch.delenv("FTP_PASS")
+    monkeypatch.delenv("FTP_PASS_FILE")
+    assert tld.env_secret("FTP_PASS", "default") == "default"

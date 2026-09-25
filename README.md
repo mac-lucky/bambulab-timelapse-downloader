@@ -46,6 +46,7 @@ References: [Enable LAN Mode](https://wiki.bambulab.com/en/knowledge-sharing/ena
 - `FTP_PORT`: FTP port (default: 990)
 - `FTP_USER`: FTP username (default: bblp)
 - `FTP_PASS`: FTP password (default: 12345678)
+- `FTP_PASS_FILE`: Path to a file holding the FTP password, e.g. a Docker secret at `/run/secrets/ftp_pass`. Takes precedence over `FTP_PASS` and keeps it out of the container's environment
 - `REMOTE_FOLDER`: Remote folder path (default: timelapse)
 - `LOCAL_FOLDER`: Local download directory (default: /timelapse)
 - `DELETE_FILES`: Whether to delete source files from the printer after download (default: false). Accepts `true`, `1`, `yes` or `on`, case-insensitive; anything else means false.

@@ -11,10 +11,29 @@ from datetime import datetime
 from croniter import croniter
 from moviepy import VideoFileClip
 
+
+def env_secret(name, default=""):
+    """A secret from the file named by NAME_FILE, else from NAME, else default.
+
+    The file form is for Docker/compose secrets: the value then never appears
+    in the container's environment, so `docker inspect` and a printed compose
+    config (a deploy log) do not show it. An unreadable file falls back to
+    NAME rather than stopping the daemon.
+    """
+    path = os.getenv(f"{name}_FILE", "").strip()
+    if path:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return f.read().strip()
+        except OSError as e:
+            print(f"{name}_FILE={path!r} could not be read ({e}), using {name}")
+    return os.getenv(name, default)
+
+
 FTP_HOST = os.getenv("FTP_HOST", "192.168.1.1")
 FTP_PORT = int(os.getenv("FTP_PORT", "990"))
 FTP_USER = os.getenv("FTP_USER", "bblp")
-FTP_PASS = os.getenv("FTP_PASS", "12345678")
+FTP_PASS = env_secret("FTP_PASS", "12345678")
 REMOTE_FOLDER = os.getenv("REMOTE_FOLDER", "timelapse")
 DOWNLOAD_FOLDER = os.getenv("LOCAL_FOLDER", "/timelapse")
 DELETE_FILES = os.getenv("DELETE_FILES", "false").strip().lower() in (
