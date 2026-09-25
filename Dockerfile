@@ -16,7 +16,7 @@ WORKDIR /app
 # Copy project files. uv.lock, not just pyproject.toml: installing from the
 # loose ranges in pyproject resolves whatever is newest at build time, so the
 # image would not contain the versions CI tested against with --locked.
-COPY pyproject.toml uv.lock .
+COPY pyproject.toml uv.lock ./
 COPY timelapse_downloader.py .
 
 ENV UV_PROJECT_ENVIRONMENT=/venv \
