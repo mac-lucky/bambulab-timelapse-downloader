@@ -29,7 +29,7 @@ Before this tool can connect to your printer, you need to enable LAN access on t
 
 Then:
 
-1. Note the **Access Code** (8-digit code) shown on the same settings page — this is your `FTP_PASS`.
+1. Note the **Access Code** (8-digit code) shown on the same settings page; this is your `FTP_PASS`.
 2. The FTP user is always `bblp` and the port is `990` (FTPS / implicit TLS).
 3. On current firmware you may also need to enable **Developer Mode** to expose FTPS to third-party clients.
 4. Make sure port `990` isn't blocked by a firewall/VLAN between the container and the printer.
