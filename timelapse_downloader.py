@@ -2,6 +2,7 @@ import contextlib
 
 # FTP over implicit TLS (FTPS) is required by Bambu Lab printers.
 import ftplib  # nosec B402
+import hashlib
 import os
 import posixpath
 import ssl
@@ -30,10 +31,44 @@ def env_secret(name, default=""):
     return os.getenv(name, default)
 
 
+SHA256_HEX_LEN = 64
+
+
+def parse_cert_pins(value):
+    """SHA-256 certificate fingerprints from a comma-separated list.
+
+    Each entry is 64 hex digits, colons optional (the form `openssl x509
+    -fingerprint -sha256` prints), case-insensitive. More than one entry lets
+    a replacement certificate be pinned before the printer starts using it.
+    A malformed entry raises: a typo must not quietly turn pinning off.
+    """
+    pins = set()
+    for entry in value.split(","):
+        pin = entry.strip().replace(":", "").lower()
+        if not pin:
+            continue
+        if len(pin) != SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in pin):
+            raise ValueError(f"not a SHA-256 fingerprint: {entry.strip()!r}")
+        pins.add(pin)
+    return frozenset(pins)
+
+
+def format_fingerprint(digest):
+    """Hex digest in openssl's colon-separated uppercase form."""
+    return ":".join(digest[i : i + 2] for i in range(0, len(digest), 2)).upper()
+
+
+class CertificatePinError(ssl.SSLError):
+    """The printer presented a certificate that matches none of the pins."""
+
+
 FTP_HOST = os.getenv("FTP_HOST", "192.168.1.1")
 FTP_PORT = int(os.getenv("FTP_PORT", "990"))
 FTP_USER = os.getenv("FTP_USER", "bblp")
 FTP_PASS = env_secret("FTP_PASS", "12345678")
+# Bambu printers serve a device certificate that names neither the IP nor a
+# hostname we could check, so the leaf itself is pinned instead.
+FTP_CERT_PINS = parse_cert_pins(os.getenv("FTP_CERT_SHA256", ""))
 REMOTE_FOLDER = os.getenv("REMOTE_FOLDER", "timelapse")
 DOWNLOAD_FOLDER = os.getenv("LOCAL_FOLDER", "/timelapse")
 DELETE_FILES = os.getenv("DELETE_FILES", "false").strip().lower() in (
@@ -48,9 +83,19 @@ VIDEO_SUFFIXES = (".avi", ".mp4")
 
 
 class ImplicitFTP_TLS(ftplib.FTP_TLS):
-    """FTP_TLS subclass that automatically wraps sockets in SSL to support implicit FTPS."""
+    """FTP_TLS subclass that automatically wraps sockets in SSL to support implicit FTPS.
 
-    def __init__(self, *args, **kwargs):
+    With cert_pins set, every TLS connection (control and data) must present a
+    certificate whose SHA-256 is one of them, checked right after the handshake
+    and before anything is sent, so the password never reaches an impostor.
+    Without pins the certificate is not verified at all, as ftplib's default
+    context does not verify.
+    """
+
+    def __init__(self, *args, cert_pins=None, **kwargs):
+        # Set before super().__init__, which connects when given a host.
+        self.cert_pins = FTP_CERT_PINS if cert_pins is None else cert_pins
+        self.peer_fingerprint = None
         super().__init__(*args, **kwargs)
         self._sock = None
 
@@ -63,15 +108,30 @@ class ImplicitFTP_TLS(ftplib.FTP_TLS):
     def sock(self, value):
         """When modifying the socket, ensure that it is ssl wrapped."""
         if value is not None and not isinstance(value, ssl.SSLSocket):
-            value = self.context.wrap_socket(value)
+            value = self.check_pin(self.context.wrap_socket(value))
         self._sock = value
+
+    def check_pin(self, conn):
+        """Return conn if its certificate is pinned (or nothing is), else close it and raise."""
+        der = conn.getpeercert(binary_form=True)
+        digest = hashlib.sha256(der).hexdigest() if der else ""
+        self.peer_fingerprint = digest
+        if not self.cert_pins or digest in self.cert_pins:
+            return conn
+        conn.close()
+        presented = format_fingerprint(digest) if digest else "no certificate"
+        raise CertificatePinError(
+            f"printer certificate SHA-256 {presented} matches no FTP_CERT_SHA256 pin"
+        )
 
     def ntransfercmd(self, cmd, rest=None):
         """Override to reuse the TLS session for data connections (required by some printers like P2S)."""
         conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
         if self._prot_p:
-            conn = self.context.wrap_socket(
-                conn, server_hostname=self.host, session=self.sock.session
+            conn = self.check_pin(
+                self.context.wrap_socket(
+                    conn, server_hostname=self.host, session=self.sock.session
+                )
             )
         return conn, size
 
@@ -193,6 +253,12 @@ def ftp_download():
         print(f"Connecting to printer {FTP_USER}@{FTP_HOST}:{FTP_PORT}")
         ftp_client = ImplicitFTP_TLS()
         ftp_client.connect(host=FTP_HOST, port=FTP_PORT)
+        if not ftp_client.cert_pins:
+            print(
+                "Printer certificate SHA-256 "
+                f"{format_fingerprint(ftp_client.peer_fingerprint or '')} "
+                "is not verified; set FTP_CERT_SHA256 to pin it."
+            )
         ftp_client.login(user=FTP_USER, passwd=FTP_PASS)
         ftp_client.prot_p()
         print("Connected.")

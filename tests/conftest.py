@@ -34,6 +34,9 @@ class FakeFTP:
         self.commands = []
         self.cwd_called = False
         self.closed = False
+        # Unpinned, like a default deployment; ftp_download logs this fingerprint.
+        self.cert_pins = frozenset()
+        self.peer_fingerprint = "ab" * 32
 
     def connect(self, host=None, port=None):
         self.commands.append(f"connect:{host}:{port}")

@@ -47,10 +47,23 @@ References: [Enable LAN Mode](https://wiki.bambulab.com/en/knowledge-sharing/ena
 - `FTP_USER`: FTP username (default: bblp)
 - `FTP_PASS`: FTP password (default: 12345678)
 - `FTP_PASS_FILE`: Path to a file holding the FTP password, e.g. a Docker secret at `/run/secrets/ftp_pass`. Takes precedence over `FTP_PASS` and keeps it out of the container's environment
+- `FTP_CERT_SHA256`: SHA-256 fingerprint of the printer's TLS certificate (default: unset). When set, every connection to the printer must present that certificate or it is dropped before the password is sent. Colons are optional; separate several with commas. See [Pinning the printer certificate](#pinning-the-printer-certificate)
 - `REMOTE_FOLDER`: Remote folder path (default: timelapse)
 - `LOCAL_FOLDER`: Local download directory (default: /timelapse)
 - `DELETE_FILES`: Whether to delete source files from the printer after download (default: false). Accepts `true`, `1`, `yes` or `on`, case-insensitive; anything else means false.
 - `CRON_SCHEDULE`: Schedule for running downloads (default: */5 * * * *)
+
+### Pinning the printer certificate
+
+Bambu printers serve a self-signed device certificate that does not name the printer's IP address, so the usual hostname check cannot work and by default the certificate is not verified at all. Anyone on the network who can answer for the printer's address would then receive the access code. Pinning the certificate closes that.
+
+Read the fingerprint from a machine on the printer's network:
+
+```bash
+openssl s_client -connect <printer-ip>:990 </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+and pass the value after `sha256 Fingerprint=` as `FTP_CERT_SHA256`. Without a pin, every run logs the fingerprint the printer presented, which is the same value. A malformed `FTP_CERT_SHA256` stops the container at startup rather than running unpinned. If the printer ever gets a new certificate (for example after a factory reset), downloads fail with a pin mismatch that names the new fingerprint; check it and update the setting.
 
 ## Usage
 
