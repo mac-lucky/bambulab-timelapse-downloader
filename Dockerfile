@@ -33,6 +33,8 @@ FROM ghcr.io/astral-sh/uv:0.12.24-python3.12-alpine@sha256:78c554a24f39be79dec87
 # apk upgrade first: the digest-pinned base can lag Alpine package fixes, and
 # upgrading at build picks them up without waiting for a base-image rebuild.
 # ffmpeg is needed for moviepy.
+# PKG_REFRESH is new on every CI build, so this RUN never comes from the layer cache.
+ARG PKG_REFRESH
 RUN apk upgrade --no-cache && apk add --no-cache ffmpeg
 
 # Set working directory
