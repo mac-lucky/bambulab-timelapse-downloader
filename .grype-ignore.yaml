@@ -1,0 +1,11 @@
+# Grype ignore rules for this image, merged into the org baseline by
+# python-cicd-reusable.yml's release scan and by the nightly registry scan in
+# forgejo-fleet-ops (a bare list of rules).
+#
+# moviepy hard-pins pillow < 12, so the pillow fixes (12.1.1+) are unreachable
+# here. The rule is scoped by location to the one copy this image ships, in the
+# /venv that uv sync fills. Drop it once moviepy allows pillow 12.
+- package:
+    name: pillow
+    type: python
+    location: "/venv/lib/python3.12/site-packages/pillow-*.dist-info/*"
