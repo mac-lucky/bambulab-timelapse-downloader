@@ -4,8 +4,12 @@ Each name says what breaks if the test goes red, so a future failure points at
 the behaviour rather than at the assertion.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import timelapse_downloader as tld
 from tests.conftest import FakeFTP
+
+DAY = timedelta(days=1)
 
 
 def test_deleting_an_already_converted_avi_does_not_abort_the_batch(
@@ -142,3 +146,43 @@ def test_missing_remote_folder_is_reported_without_downloading(
 
     assert fake.retrieved == []
     assert local_names() == []
+
+
+def _mdtm(age):
+    """MDTM timestamp for a file last written `age` ago (negative: in the future)."""
+    return (datetime.now(UTC) - age).strftime("%Y%m%d%H%M%S")
+
+
+def test_a_file_the_printer_wrote_minutes_ago_is_left_for_the_next_run(
+    run_download, local_names
+):
+    # Was: a timelapse still being recorded was fetched truncated, and with
+    # DELETE_FILES the printer's copy was then deleted under the printer.
+    fake = FakeFTP({"rec.mp4": b"first frames", "old.mp4": b"finished"})
+    fake.mtimes = {"rec.mp4": _mdtm(timedelta(minutes=1)), "old.mp4": _mdtm(DAY)}
+    run_download(fake, delete_files=True)
+
+    assert fake.retrieved == ["old.mp4"]
+    assert fake.deleted == ["old.mp4"]
+    assert local_names() == ["old.mp4"]
+
+
+def test_a_printer_clock_far_off_does_not_hold_files_back(run_download, local_names):
+    # A clock that wrong says nothing about the file, so it must not defer it.
+    fake = FakeFTP({"a.mp4": b"aaa", "b.mp4": b"bbb"})
+    fake.mtimes = {"a.mp4": _mdtm(-DAY), "b.mp4": "garbage"}
+    run_download(fake)
+
+    assert local_names() == ["a.mp4", "b.mp4"]
+
+
+def test_a_file_that_grows_during_the_transfer_stays_on_the_printer(
+    run_download, local_names
+):
+    # Without MDTM, growth seen across the transfer is the sign it is recording.
+    fake = FakeFTP({"rec.avi": b"first frames", "done.mp4": b"finished"})
+    fake.growing = {"rec.avi"}
+    run_download(fake, delete_files=True)
+
+    assert fake.deleted == ["done.mp4"]
+    assert local_names() == ["done.mp4"]

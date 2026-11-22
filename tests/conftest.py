@@ -29,6 +29,11 @@ class FakeFTP:
         # What the server advertises at the root, independent of the folder the
         # daemon is configured to look for, so a mismatch can be tested.
         self.root_listing = [remote_folder]
+        # MDTM answers by name ("YYYYMMDDHHMMSS"); a name not here gets 502, as
+        # from a server without MDTM.
+        self.mtimes = {}
+        # Names the "printer" is still recording: each RETR grows them.
+        self.growing = set()
         self.deleted = []
         self.retrieved = []
         self.commands = []
@@ -76,6 +81,15 @@ class FakeFTP:
             raise ftplib.error_perm(f"550 {name}: No such file")
         self.retrieved.append(name)
         callback(self.files[name])
+        if name in self.growing:
+            self.files[name] += b"another frame"
+
+    def sendcmd(self, cmd):
+        self.commands.append(cmd)
+        verb, _, name = cmd.partition(" ")
+        if verb == "MDTM" and name in self.mtimes:
+            return f"213 {self.mtimes[name]}"
+        raise ftplib.error_perm(f"502 {verb} not implemented")
 
     def delete(self, name):
         self.commands.append(f"delete:{name}")

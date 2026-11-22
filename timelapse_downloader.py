@@ -7,7 +7,7 @@ import os
 import posixpath
 import ssl
 import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from croniter import croniter
 from moviepy import VideoFileClip
@@ -84,6 +84,8 @@ VIDEO_SUFFIXES = (".avi", ".mp4")
 # every data socket, so a printer that drops off the network mid-transfer raises
 # instead of hanging the daemon; a slow but live transfer is not cut off.
 FTP_TIMEOUT = 60
+# A file the printer modified this recently may still be recording.
+RECENT_WRITE = timedelta(minutes=10)
 
 
 class ImplicitFTP_TLS(ftplib.FTP_TLS):
@@ -210,6 +212,25 @@ def delete_remote(ftp_client, remote):
         return False
 
 
+def written_recently(ftp_client, remote):
+    """True when the printer's MDTM puts the file's last write within RECENT_WRITE.
+
+    The window counts both ways, so a printer clock a few minutes ahead still
+    defers a fresh file, and a deferred file always ages out of it. A printer
+    without MDTM, or with a clock off by more than the window, gives False;
+    the size check after the transfer then guards the file on its own.
+    """
+    try:
+        resp = ftp_client.sendcmd(f"MDTM {remote}")
+        if not resp.startswith("213 "):
+            return False
+        # RFC 3659: "213 YYYYMMDDHHMMSS[.sss]", always UTC.
+        modified = datetime.strptime(resp[4:18], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+    except (ftplib.Error, ValueError):
+        return False
+    return abs(datetime.now(UTC) - modified) < RECENT_WRITE
+
+
 def download_one(ftp_client, remote, local_name, label):
     """Download a single timelapse, converting .avi to .mp4, then delete the remote copy."""
     download_file_path = os.path.join(DOWNLOAD_FOLDER, local_name)
@@ -218,6 +239,9 @@ def download_one(ftp_client, remote, local_name, label):
     # the next run, so the video would be skipped forever.
     partial_path = download_file_path + ".part"
     try:
+        if written_recently(ftp_client, remote):
+            print(f"Skipping {remote}, the printer is still writing it; next run.")
+            return
         filesize = ftp_client.size(remote)
         if not filesize:
             print(
@@ -229,6 +253,13 @@ def download_one(ftp_client, remote, local_name, label):
         print(f'Downloading file "{remote}" ({label}), size: {filesize_mb} MB')
         with open(partial_path, "wb") as fhandle:
             ftp_client.retrbinary(f"RETR {remote}", fhandle.write)
+        # A file that grew during the transfer is still being recorded: keep the
+        # printer's copy and fetch the finished one on a later run.
+        received = os.path.getsize(partial_path)
+        if ftp_client.size(remote) != received:
+            print(f"Skipping {remote}, it changed during the download; next run.")
+            remove_quietly(partial_path)
+            return
         os.replace(partial_path, download_file_path)
 
         # Convert .avi to .mp4, download .mp4 as-is
