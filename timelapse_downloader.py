@@ -77,7 +77,25 @@ DELETE_FILES = os.getenv("DELETE_FILES", "false").strip().lower() in (
     "yes",
     "on",
 )
-CRON_SCHEDULE = os.getenv("CRON_SCHEDULE", "*/5 * * * *")  # Default: every 5 minutes
+DEFAULT_CRON_SCHEDULE = "*/5 * * * *"
+
+
+def cron_schedule(value):
+    """value if croniter accepts it, else the default every-5-minutes schedule.
+
+    An invalid schedule would otherwise raise after the first run and put the
+    container into a restart loop that polls the printer on every start.
+    """
+    if croniter.is_valid(value):
+        return value
+    print(
+        f"CRON_SCHEDULE={value!r} is not a cron expression, "
+        f"using {DEFAULT_CRON_SCHEDULE!r}"
+    )
+    return DEFAULT_CRON_SCHEDULE
+
+
+CRON_SCHEDULE = cron_schedule(os.getenv("CRON_SCHEDULE", DEFAULT_CRON_SCHEDULE))
 
 VIDEO_SUFFIXES = (".avi", ".mp4")
 # Seconds any single socket call may block. ftplib applies it to the control and

@@ -89,6 +89,17 @@ def test_get_next_run_keeps_tzinfo_and_stays_in_the_cron_window(monkeypatch):
     assert 0 < (nxt - now).total_seconds() <= FIVE_MINUTES
 
 
+def test_a_valid_cron_schedule_is_kept():
+    assert tld.cron_schedule("0 6 * * *") == "0 6 * * *"
+
+
+@pytest.mark.parametrize("bad", ["every day", "", "61 * * * *"])
+def test_an_invalid_cron_schedule_falls_back_to_the_default(bad):
+    # Was: croniter raised after the first run, outside any guard, so the
+    # container crashed and restarted into another printer poll.
+    assert tld.cron_schedule(bad) == tld.DEFAULT_CRON_SCHEDULE == "*/5 * * * *"
+
+
 def test_env_secret_prefers_the_file(tmp_path, monkeypatch):
     secret = tmp_path / "ftp_pass"
     secret.write_text("from-file\n")
