@@ -170,6 +170,24 @@ def test_a_stranded_avi_that_differs_from_the_printer_copy_is_fetched_again(
     assert (tmp_path / "clip.avi").read_bytes() == b"the whole recording"
 
 
+def test_a_failed_refetch_keeps_the_stranded_avi(
+    run_download, local_names, tmp_path, failing_clips
+):
+    # The earlier download may be the only copy left, so a transfer that dies
+    # part way must not take it with it.
+    (tmp_path / "clip.avi").write_bytes(b"cut short")
+
+    fake = run_download(
+        FakeFTP({"clip.avi": b"the whole recording"}, fail_on="retr"),
+        delete_files=True,
+    )
+
+    assert fake.retrieved == ["clip.avi"]
+    assert fake.deleted == []
+    assert (tmp_path / "clip.avi").read_bytes() == b"cut short"
+    assert local_names() == ["clip.avi"]
+
+
 @needs_ffmpeg
 def test_conversion_writes_the_mp4_and_removes_the_source(tiny_avi, tmp_path):
     out = tmp_path / "clip.mp4"

@@ -80,6 +80,9 @@ class FakeFTP:
         if name not in self.files:
             raise ftplib.error_perm(f"550 {name}: No such file")
         self.retrieved.append(name)
+        if self.fail_on == "retr":
+            callback(self.files[name][:4])
+            raise TimeoutError("timed out")
         callback(self.files[name])
         if name in self.growing:
             self.files[name] += b"another frame"
