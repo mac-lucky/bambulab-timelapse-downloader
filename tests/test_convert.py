@@ -101,18 +101,34 @@ def test_clip_is_released_even_when_the_write_fails(tmp_path, failing_clips):
     assert failing_clips[0].closed, "clip was not closed after a failed write"
 
 
-def test_failed_conversion_removes_a_leftover_output(tmp_path, failing_clips):
-    # A half-written .mp4 would look like a finished conversion next run, and
-    # get the printer's copy deleted.
+def test_a_failure_after_the_encode_keeps_the_finished_mp4(tmp_path, monkeypatch):
+    # Was: the except deleted clip.mp4 when removing the source failed after the
+    # rename, so every later run re-encoded the same clip.
     src = tmp_path / "clip.avi"
     src.write_bytes(b"pretend video")
     out = tmp_path / "clip.mp4"
-    out.write_bytes(b"partial output from a crashed run")
+
+    class SourceVanishes:
+        def __init__(self, path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def write_videofile(self, filename, *args, **kwargs):
+            with open(filename, "wb") as f:
+                f.write(b"finished encode")
+            src.unlink()
+
+    monkeypatch.setattr(tld, "VideoFileClip", SourceVanishes)
 
     assert tld.convert_avi_to_mp4(str(src), str(out)) is False
 
-    assert not out.exists()
-    assert src.exists(), "the source must survive so a later run can retry"
+    assert out.read_bytes() == b"finished encode"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["clip.mp4"]
 
 
 def test_the_encode_goes_to_a_scratch_name_and_leaves_none_behind(

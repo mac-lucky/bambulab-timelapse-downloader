@@ -193,9 +193,8 @@ def convert_avi_to_mp4(input_file, output_file):
         return True
     except Exception as e:
         print(f"Failed to convert {input_file} to {output_file}: {e}")
+        # output_file is left alone: it only exists once the encode has finished.
         remove_quietly(temp_file)
-        # A partial .mp4 would look like a finished conversion on the next run.
-        remove_quietly(output_file)
         return False
 
 
