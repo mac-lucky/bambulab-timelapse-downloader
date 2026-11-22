@@ -4,6 +4,7 @@ Each name says what breaks if the test goes red, so a future failure points at
 the behaviour rather than at the assertion.
 """
 
+import timelapse_downloader as tld
 from tests.conftest import FakeFTP
 
 
@@ -113,6 +114,13 @@ def test_happy_path_downloads_then_deletes_the_remote_copy(run_download, local_n
 def test_delete_files_off_leaves_the_printer_copy_alone(run_download):
     fake = run_download(FakeFTP({"new.mp4": b"video-bytes"}), delete_files=False)
     assert fake.deleted == []
+
+
+def test_the_client_is_built_with_a_socket_timeout(run_download):
+    # Was: no timeout, so a printer that vanished mid-transfer blocked the read
+    # forever and no later scheduled run ever started.
+    fake = run_download(FakeFTP({"a.mp4": b"x"}))
+    assert fake.init_kwargs.get("timeout") == tld.FTP_TIMEOUT > 0
 
 
 def test_the_connection_is_always_closed(run_download):

@@ -80,6 +80,10 @@ DELETE_FILES = os.getenv("DELETE_FILES", "false").strip().lower() in (
 CRON_SCHEDULE = os.getenv("CRON_SCHEDULE", "*/5 * * * *")  # Default: every 5 minutes
 
 VIDEO_SUFFIXES = (".avi", ".mp4")
+# Seconds any single socket call may block. ftplib applies it to the control and
+# every data socket, so a printer that drops off the network mid-transfer raises
+# instead of hanging the daemon; a slow but live transfer is not cut off.
+FTP_TIMEOUT = 60
 
 
 class ImplicitFTP_TLS(ftplib.FTP_TLS):
@@ -251,7 +255,7 @@ def ftp_download():
         }
 
         print(f"Connecting to printer {FTP_USER}@{FTP_HOST}:{FTP_PORT}")
-        ftp_client = ImplicitFTP_TLS()
+        ftp_client = ImplicitFTP_TLS(timeout=FTP_TIMEOUT)
         ftp_client.connect(host=FTP_HOST, port=FTP_PORT)
         if not ftp_client.cert_pins:
             print(

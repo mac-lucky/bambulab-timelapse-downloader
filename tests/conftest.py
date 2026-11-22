@@ -110,7 +110,12 @@ def run_download(tmp_path, monkeypatch):
         monkeypatch.setattr(tld, "DOWNLOAD_FOLDER", str(tmp_path))
         monkeypatch.setattr(tld, "DELETE_FILES", delete_files)
         monkeypatch.setattr(tld, "REMOTE_FOLDER", fake.remote_folder)
-        monkeypatch.setattr(tld, "ImplicitFTP_TLS", lambda: fake)
+
+        def build(**kwargs):
+            fake.init_kwargs = kwargs
+            return fake
+
+        monkeypatch.setattr(tld, "ImplicitFTP_TLS", build)
         tld.ftp_download()
         return fake
 
