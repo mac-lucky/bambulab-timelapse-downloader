@@ -155,17 +155,24 @@ def remove_quietly(path):
 
 def convert_avi_to_mp4(input_file, output_file):
     """Convert .avi to .mp4 using moviepy. Returns True on success."""
+    # Encode under a scratch name so a run cut off mid-encode leaves no .mp4
+    # that looks finished. It keeps the .mp4 suffix: ffmpeg picks the container
+    # from it.
+    temp_file = os.path.splitext(output_file)[0] + ".tmp.mp4"
     try:
+        remove_quietly(temp_file)
         print(f"Converting {input_file} to {output_file}")
         # The context manager closes the ffmpeg reader subprocess even if the write fails.
         with VideoFileClip(input_file) as video_clip:
-            video_clip.write_videofile(output_file, codec="libx264", bitrate="10000k")
+            video_clip.write_videofile(temp_file, codec="libx264", bitrate="10000k")
+        os.replace(temp_file, output_file)
         print(f"Conversion to {output_file} successful.")
         os.remove(input_file)
         print(f"Removed original file {input_file}.")
         return True
     except Exception as e:
         print(f"Failed to convert {input_file} to {output_file}: {e}")
+        remove_quietly(temp_file)
         # A partial .mp4 would look like a finished conversion on the next run.
         remove_quietly(output_file)
         return False
@@ -188,7 +195,13 @@ def safe_local_name(remote_name):
 
 
 def list_remote_files(ftp_client, downloaded_files):
-    """Return (remote entry, local name) pairs for timelapses we do not have yet."""
+    """Return (remote entry, local name) pairs for timelapses we do not have yet.
+
+    An .avi that is here without its .mp4 is not had yet either: an earlier
+    run downloaded it, but its conversion failed or was cut off. Only names the
+    printer still lists come back this way, so no other .avi in the folder is
+    ever converted or removed.
+    """
     pending = []
     for entry in ftp_client.nlst():
         if not entry.endswith(VIDEO_SUFFIXES):
@@ -197,7 +210,10 @@ def list_remote_files(ftp_client, downloaded_files):
         if local_name is None:
             print(f"Skipping remote entry with unusable name: {entry!r}")
             continue
-        if local_name not in downloaded_files:
+        unconverted = (
+            local_name.endswith(".avi") and mp4_name(local_name) not in downloaded_files
+        )
+        if local_name not in downloaded_files or unconverted:
             pending.append((entry, local_name))
     return pending
 
@@ -250,17 +266,25 @@ def download_one(ftp_client, remote, local_name, label):
             return
         filesize_mb = round(filesize / 1024 / 1024, 2)
 
-        print(f'Downloading file "{remote}" ({label}), size: {filesize_mb} MB')
-        with open(partial_path, "wb") as fhandle:
-            ftp_client.retrbinary(f"RETR {remote}", fhandle.write)
-        # A file that grew during the transfer is still being recorded: keep the
-        # printer's copy and fetch the finished one on a later run.
-        received = os.path.getsize(partial_path)
-        if ftp_client.size(remote) != received:
-            print(f"Skipping {remote}, it changed during the download; next run.")
-            remove_quietly(partial_path)
-            return
-        os.replace(partial_path, download_file_path)
+        # An earlier run's download whose conversion did not finish. A copy that
+        # differs from the printer's is fetched again rather than trusted.
+        if (
+            os.path.isfile(download_file_path)
+            and os.path.getsize(download_file_path) == filesize
+        ):
+            print(f"Retrying the conversion of {local_name}, downloaded earlier.")
+        else:
+            print(f'Downloading file "{remote}" ({label}), size: {filesize_mb} MB')
+            with open(partial_path, "wb") as fhandle:
+                ftp_client.retrbinary(f"RETR {remote}", fhandle.write)
+            # A file that grew during the transfer is still being recorded: keep
+            # the printer's copy and fetch the finished one on a later run.
+            received = os.path.getsize(partial_path)
+            if ftp_client.size(remote) != received:
+                print(f"Skipping {remote}, it changed during the download; next run.")
+                remove_quietly(partial_path)
+                return
+            os.replace(partial_path, download_file_path)
 
         # Convert .avi to .mp4, download .mp4 as-is
         if local_name.endswith(".avi"):
@@ -269,8 +293,9 @@ def download_one(ftp_client, remote, local_name, label):
                 # Keep the printer's copy so a later run can retry the conversion.
                 return
     except Exception as e:
+        # The finished name is left alone: nothing past the rename raises, so a
+        # file there is an earlier run's complete download, maybe the only copy.
         remove_quietly(partial_path)
-        remove_quietly(download_file_path)
         print(f"Failed to download file {remote}: {e}, continuing with next file.")
         return
 

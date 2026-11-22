@@ -81,7 +81,8 @@ def failing_clips(monkeypatch):
         def close(self):
             self.closed = True
 
-        def write_videofile(self, *args, **kwargs):
+        def write_videofile(self, filename, *args, **kwargs):
+            self.target = filename
             raise RuntimeError("encoder exploded")
 
     monkeypatch.setattr(tld, "VideoFileClip", FailingClip)
@@ -114,12 +115,52 @@ def test_failed_conversion_removes_a_leftover_output(tmp_path, failing_clips):
     assert src.exists(), "the source must survive so a later run can retry"
 
 
+def test_the_encode_goes_to_a_scratch_name_and_leaves_none_behind(
+    tmp_path, failing_clips
+):
+    # Was: moviepy wrote straight to clip.mp4, so a run killed mid-encode left
+    # an .mp4 that the next run took for a finished conversion.
+    src = tmp_path / "clip.avi"
+    src.write_bytes(b"pretend video")
+    (tmp_path / "clip.tmp.mp4").write_bytes(b"left by a killed run")
+
+    assert tld.convert_avi_to_mp4(str(src), str(tmp_path / "clip.mp4")) is False
+
+    assert failing_clips[0].target == str(tmp_path / "clip.tmp.mp4")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["clip.avi"]
+
+
+def test_a_local_avi_the_printer_does_not_list_is_left_alone(
+    run_download, local_names, tmp_path, failing_clips
+):
+    # The folder may hold the owner's own videos: only names the printer still
+    # lists are retried.
+    (tmp_path / "mine.avi").write_bytes(b"not from the printer")
+
+    run_download(FakeFTP({"other.mp4": b"video"}), delete_files=True)
+
+    assert failing_clips == []
+    assert local_names() == ["mine.avi", "other.mp4"]
+
+
+def test_a_stranded_avi_that_differs_from_the_printer_copy_is_fetched_again(
+    run_download, tmp_path, failing_clips
+):
+    (tmp_path / "clip.avi").write_bytes(b"cut short")
+
+    fake = run_download(FakeFTP({"clip.avi": b"the whole recording"}))
+
+    assert fake.retrieved == ["clip.avi"]
+    assert (tmp_path / "clip.avi").read_bytes() == b"the whole recording"
+
+
 @needs_ffmpeg
 def test_conversion_writes_the_mp4_and_removes_the_source(tiny_avi, tmp_path):
     out = tmp_path / "clip.mp4"
     assert tld.convert_avi_to_mp4(str(tiny_avi), str(out)) is True
     assert out.exists() and out.stat().st_size > 0
     assert not tiny_avi.exists()
+    assert not (tmp_path / "clip.tmp.mp4").exists()
 
 
 @needs_ffmpeg
@@ -153,3 +194,31 @@ def test_a_failed_conversion_keeps_the_printer_copy(run_download, local_names):
 
     assert fake.deleted == []
     assert local_names() == ["clip.avi"]
+
+
+@needs_ffmpeg
+def test_a_failed_conversion_is_retried_on_the_next_run(
+    run_download, local_names, tiny_avi, tmp_path, monkeypatch
+):
+    # Was: the stranded clip.avi counted as downloaded, so it was never
+    # converted and the printer copy was never deleted.
+    raw = tiny_avi.read_bytes()
+    tiny_avi.unlink()
+    real_clip = tld.VideoFileClip
+
+    class BrokenEncoder:
+        def __init__(self, path):
+            raise RuntimeError("encoder unavailable")
+
+    monkeypatch.setattr(tld, "VideoFileClip", BrokenEncoder)
+    first = run_download(FakeFTP({"clip.avi": raw}), delete_files=True)
+    assert first.deleted == []
+    assert local_names() == ["clip.avi"]
+
+    monkeypatch.setattr(tld, "VideoFileClip", real_clip)
+    (tmp_path / "clip.tmp.mp4").write_bytes(b"left by a killed run")
+    second = run_download(FakeFTP({"clip.avi": raw}), delete_files=True)
+
+    assert second.retrieved == [], "the local copy is converted, not fetched again"
+    assert second.deleted == ["clip.avi"]
+    assert local_names() == ["clip.mp4"]
