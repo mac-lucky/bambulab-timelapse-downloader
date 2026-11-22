@@ -9,7 +9,7 @@ import ssl
 import time
 from datetime import UTC, datetime, timedelta
 
-from croniter import croniter
+from croniter import CroniterError, croniter
 from moviepy import VideoFileClip
 
 
@@ -81,18 +81,21 @@ DEFAULT_CRON_SCHEDULE = "*/5 * * * *"
 
 
 def cron_schedule(value):
-    """value if croniter accepts it, else the default every-5-minutes schedule.
+    """value if croniter accepts it and it ever fires, else every 5 minutes.
 
-    An invalid schedule would otherwise raise after the first run and put the
-    container into a restart loop that polls the printer on every start.
+    An invalid schedule, or a valid one naming a date that never comes (Feb 30),
+    would otherwise raise after the first run and put the container into a
+    restart loop that polls the printer on every start.
     """
-    if croniter.is_valid(value):
+    try:
+        croniter(value).get_next(datetime)
         return value
-    print(
-        f"CRON_SCHEDULE={value!r} is not a cron expression, "
-        f"using {DEFAULT_CRON_SCHEDULE!r}"
-    )
-    return DEFAULT_CRON_SCHEDULE
+    except CroniterError as e:
+        print(
+            f"CRON_SCHEDULE={value!r} is not a usable cron expression ({e}), "
+            f"using {DEFAULT_CRON_SCHEDULE!r}"
+        )
+        return DEFAULT_CRON_SCHEDULE
 
 
 CRON_SCHEDULE = cron_schedule(os.getenv("CRON_SCHEDULE", DEFAULT_CRON_SCHEDULE))
